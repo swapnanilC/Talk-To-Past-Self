@@ -1,5 +1,7 @@
 package com.Swapnanil.Talk_To_Past_Self.service;
 
+import com.Swapnanil.Talk_To_Past_Self.dto.MemoryResponse;
+import com.Swapnanil.Talk_To_Past_Self.dto.MemorySearchResult;
 import com.Swapnanil.Talk_To_Past_Self.entity.Memory;
 import com.Swapnanil.Talk_To_Past_Self.repository.MemoryRepository;
 import com.Swapnanil.Talk_To_Past_Self.repository.MemoryVectorSearchRepository;
@@ -43,7 +45,8 @@ public class MemoryService {
 
     public List<Memory> findSimilarMemories(
             Long userId,
-            String question) {
+            String question
+    ) {
 
         float[] embedding = embeddingModel
                 .embed(question)
@@ -53,9 +56,58 @@ public class MemoryService {
         String vectorString = Arrays.toString(embedding)
                 .replace(" ", "");
 
-        return memoryVectorSearchRepository.findSimilarMemories(
-                userId,
-                vectorString
+        List<MemorySearchResult> results =
+                memoryVectorSearchRepository.findSimilarMemories(
+                        userId,
+                        vectorString,
+                        0.5
+                );
+
+        results.forEach(result ->
+                System.out.println(
+                        "Memory: " + result.memory().getMemory()
+                                + " | Distance: " + result.distance()
+                )
         );
+
+        return results.stream()
+                .map(MemorySearchResult::memory)
+                .toList();
     }
+
+    public boolean hasSimilarMemory(
+            Long userId,
+            String memoryText
+    ) {
+
+        float[] embedding = embeddingModel
+                .embed(memoryText)
+                .content()
+                .vector();
+
+        String vectorString = Arrays.toString(embedding)
+                .replace(" ", "");
+
+        List<MemorySearchResult> similarMemories =
+                memoryVectorSearchRepository.findSimilarMemories(
+                        userId,
+                        vectorString,
+                        0.2
+                );
+
+        return !similarMemories.isEmpty();
+    }
+
+    public List<MemoryResponse> getMemories(Long userId) {
+
+        return memoryRepository
+                .findMemoriesByUserId(userId)
+                .stream()
+                .map(row -> new MemoryResponse(
+                        (String) row[2],
+                        (String) row[3]
+                ))
+                .toList();
+    }
+
 }

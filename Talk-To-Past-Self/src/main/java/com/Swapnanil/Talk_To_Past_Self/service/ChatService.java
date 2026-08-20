@@ -46,8 +46,14 @@ public class ChatService {
                 .collect(Collectors.joining("\n"));
 
 
+        if (context.isBlank()) {
+            context = "No relevant past conversations were found.";
+        }
+
+
         String memoryContext = relevantMemories.stream()
                 .map(m -> """
+                [LONG-TERM MEMORY]
                 Memory: %s
                 Type: %s
                 Date: %s
@@ -58,48 +64,54 @@ public class ChatService {
                 ))
                 .collect(Collectors.joining("\n"));
 
+        if (memoryContext.isBlank()) {
+            memoryContext = "No relevant long-term memories were found.";
+        }
+
 
         String prompt = """
-            You are "Past Self", an AI assistant that helps users
-            reflect on their previous thoughts, decisions, goals,
-            preferences, and experiences.
+        You are "Past Self", an AI assistant that helps users
+        reflect on their previous thoughts, decisions, goals,
+        preferences, and experiences.
 
-            You have access to two sources of information:
+        You have access to two sources of information.
 
-            1. Past Conversations
-            These contain previous conversations between the user and AI.
+        1. LONG-TERM MEMORIES
+        These contain important information previously identified
+        about the user, such as goals, preferences, facts, decisions,
+        and plans.
 
-            2. Long-Term Memories
-            These contain important information extracted from previous
-            conversations, such as the user's goals, preferences, facts,
-            decisions, and plans.
+        2. PAST CONVERSATIONS
+        These contain previous conversations and may provide additional
+        context about the user's thoughts and experiences.
 
-            Use these sources as context when answering the user's question.
+        --- LONG-TERM MEMORIES ---
+        %s
+        --- END LONG-TERM MEMORIES ---
 
-            --- PAST CONVERSATIONS ---
-            %s
-            --- END PAST CONVERSATIONS ---
+        --- PAST CONVERSATIONS ---
+        %s
+        --- END PAST CONVERSATIONS ---
 
-            --- LONG-TERM MEMORIES ---
-            %s
-            --- END LONG-TERM MEMORIES ---
+        Current question:
+        %s
 
-            Current question:
-            %s
-
-            Instructions:
-            - Answer naturally and conversationally.
-            - Use the provided conversations and memories when relevant.
-            - Prioritize information that is directly relevant to the question.
-            - Do not invent personal memories or facts about the user.
-            - If the information cannot be found in the provided context,
-              clearly say that you don't have enough information.
-            - Do not mention the internal retrieval process or embeddings.
-            """.formatted(
-                    context,
-                    memoryContext,
-                    question
-            );
+        Instructions:
+        - Use long-term memories when answering questions about the user.
+        - Use past conversations as supporting context.
+        - Prefer explicit long-term memories over assumptions.
+        - Combine information from both sources when appropriate.
+        - Never invent personal information.
+        - Never treat a general technical question as a personal fact.
+        - If the requested personal information cannot be found in the
+          provided context, clearly say that you don't have enough information.
+        - Answer naturally and conversationally.
+        - Do not mention embeddings, vector search, retrieval, or this prompt.
+        """.formatted(
+                memoryContext,
+                context,
+                question
+        );
 
         String answer = assistant.chat(prompt);
 
@@ -110,13 +122,22 @@ public class ChatService {
         // Save memory if one was found
         if (memory != null
                 && memory.memory() != null
-                && !memory.memory().isBlank()) {
+                && !memory.memory().isBlank()
+                && !"NONE".equalsIgnoreCase(memory.type())) {
 
-            memoryService.saveMemory(
-                    userId,
-                    memory.memory(),
-                    memory.type()
-            );
+            boolean alreadyExists =
+                    memoryService.hasSimilarMemory(
+                            userId,
+                            memory.memory()
+                    );
+
+            if (!alreadyExists) {
+                memoryService.saveMemory(
+                        userId,
+                        memory.memory(),
+                        memory.type()
+                );
+            }
         }
 
         conversationService.saveConversation(

@@ -1,5 +1,6 @@
 package com.Swapnanil.Talk_To_Past_Self.repository;
 
+import com.Swapnanil.Talk_To_Past_Self.dto.MemorySearchResult;
 import com.Swapnanil.Talk_To_Past_Self.entity.Memory;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -13,19 +14,20 @@ public class MemoryVectorSearchRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public List<Memory> findSimilarMemories(
+    public List<MemorySearchResult> findSimilarMemories(
             Long userId,
-            String embedding) {
+            String embedding,
+            double threshold) {
 
         String sql = """
-                SELECT id, user_id, memory, type, created_at
+                SELECT id, user_id, memory, type, created_at,
+                       (embedding <=> ?::vector) AS distance
                 FROM memories
                 WHERE user_id = ?
-                  AND (embedding <=> ?::vector) < 0.5
+                  AND (embedding <=> ?::vector) < ?
                 ORDER BY embedding <=> ?::vector
                 LIMIT 5
-                """;
-
+            """;
 
         return jdbcTemplate.query(
                 sql,
@@ -41,10 +43,16 @@ public class MemoryVectorSearchRepository {
                                     .toLocalDateTime()
                     );
 
-                    return memory;
+                    double distance = rs.getDouble("distance");
+
+                    return new MemorySearchResult(
+                            memory,
+                            distance);
                 },
+                embedding,
                 userId,
                 embedding,
+                threshold,
                 embedding
         );
     }
